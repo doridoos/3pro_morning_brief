@@ -36,11 +36,19 @@ def find_clipped_archives(target_date: date, videos_url: str = "https://www.yout
     candidates = list_channel_videos(videos_url)
     selected: dict[str, VideoCandidate] = {}
     ymd = target_date.strftime("%Y%m%d")
+
     for part_name, keywords in ARCHIVE_PART_KEYWORDS.items():
-        matches = [c for c in candidates if any(keyword in c.title for keyword in keywords)]
-        dated = [c for c in matches if c.upload_date == ymd]
-        if dated:
-            selected[part_name] = dated[0]
-        elif matches:
+        matches = [
+            candidate
+            for candidate in candidates
+            if candidate.upload_date == ymd and any(keyword in candidate.title for keyword in keywords)
+        ]
+        if matches:
             selected[part_name] = matches[0]
+
+    missing = sorted(set(ARCHIVE_PART_KEYWORDS) - set(selected))
+    if missing:
+        missing_text = ", ".join(missing)
+        raise RuntimeError(f"Same-day archive video not found yet for {target_date.isoformat()}: {missing_text}")
+
     return selected
