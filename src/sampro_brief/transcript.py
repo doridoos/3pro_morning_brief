@@ -5,12 +5,84 @@ import re
 import urllib.request
 from html import unescape
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 PREFERRED_LANGS = ("ko", "ko-orig", "en")
 PREFERRED_EXTS = ("vtt", "json3", "srv3", "ttml")
 
 
 def collect_transcript(video_url: str, output_dir: Path, name: str) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{name}.txt"
+
+    text = fetch_with_transcript_api(video_url)
+    if not text:
+        text = fetch_with_ytdlp(video_url)
+
+    if not text.strip():
+        raise RuntimeError(f"No subtitle found: {video_url}")
+
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def video_id_from_url(video_url: str) -> str:
+    parsed = urlparse(video_url)
+    if parsed.netloc.endswith("youtu.be"):
+        return parsed.path.strip("/")
+    query_id = parse_qs(parsed.query).get("v")
+    if query_id:
+        return query_id[0]
+    if "/watch/" in parsed.path:
+        return parsed.path.rsplit("/", 1)[-1]
+    return parsed.path.strip("/").rsplit("/", 1)[-1]
+
+
+def fetch_with_transcript_api(video_url: str) -> str:
+    video_id = video_id_from_url(video_url)
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        return ""
+
+    try:
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript = None
+        for language in PREFERRED_LANGS:
+            try:
+                transcript = transcript_list.find_transcript([language])
+                break
+            except Exception:
+                try:
+                    transcript = transcript_list.find_generated_transcript([language])
+                    break
+                except Exception:
+                    continue
+        if transcript is None:
+            transcript = next(iter(transcript_list))
+        return transcript_items_to_text(transcript.fetch())
+    except Exception:
+        try:
+            return transcript_items_to_text(YouTubeTranscriptApi.get_transcript(video_id, languages=list(PREFERRED_LANGS)))
+        except Exception:
+            return ""
+
+
+def transcript_items_to_text(items: list) -> str:
+    lines: list[str] = []
+    for item in items:
+        text = ""
+        if isinstance(item, dict):
+            text = item.get("text", "")
+        else:
+            text = getattr(item, "text", "")
+        text = normalize(text)
+        if text:
+            lines.append(text)
+    return dedupe(lines)
+
+
+def fetch_with_ytdlp(video_url: str) -> str:
     from yt_dlp import YoutubeDL
 
     with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
@@ -18,14 +90,10 @@ def collect_transcript(video_url: str, output_dir: Path, name: str) -> Path:
 
     subtitle = choose_subtitle(info)
     if not subtitle:
-        raise RuntimeError(f"No subtitle found: {video_url}")
+        return ""
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     raw = fetch_text(subtitle["url"])
-    text = clean_subtitle(raw, subtitle["ext"])
-    path = output_dir / f"{name}.txt"
-    path.write_text(text, encoding="utf-8")
-    return path
+    return clean_subtitle(raw, subtitle["ext"])
 
 
 def choose_subtitle(info: dict) -> dict | None:
@@ -68,7 +136,7 @@ def clean_subtitle(raw: str, ext: str) -> str:
 
 
 def normalize(line: str) -> str:
-    return re.sub(r"\s+", " ", unescape(line)).strip()
+    return re.sub(r"\s+", " ", unescape(line).replace("\n", " ")).strip()
 
 
 def dedupe(lines: list[str]) -> str:
