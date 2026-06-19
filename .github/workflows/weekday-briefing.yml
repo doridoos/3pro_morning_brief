@@ -25,3 +25,11 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m src.sampro_brief.cli --date today --collect-archive-transcripts --analyze-openai --create-tts --send-telegram
+      - name: Save briefing files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sampro-briefing-${{ github.run_id }}
+          path: briefings/
+          if-no-files-found: warn
+          retention-days: 14
