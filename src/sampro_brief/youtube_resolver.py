@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date
 
 ARCHIVE_PART_KEYWORDS = {
     "wall_street_newsletter": ("[월가의 뉴스레터]", "[월가 뉴스레터]", "월가 뉴스레터"),
@@ -32,26 +32,6 @@ def list_channel_videos(videos_url: str, limit: int = 40) -> list[VideoCandidate
     return candidates
 
 
-def hydrate_video(candidate: VideoCandidate) -> VideoCandidate:
-    if candidate.upload_date:
-        return candidate
-
-    from yt_dlp import YoutubeDL
-
-    with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
-        info = ydl.extract_info(candidate.url, download=False)
-
-    upload_date = info.get("upload_date")
-    if not upload_date and info.get("timestamp"):
-        upload_date = datetime.fromtimestamp(info["timestamp"], tz=timezone.utc).strftime("%Y%m%d")
-
-    return VideoCandidate(
-        title=info.get("title") or candidate.title,
-        url=info.get("webpage_url") or candidate.url,
-        upload_date=upload_date,
-    )
-
-
 def find_clipped_archives(target_date: date, videos_url: str = "https://www.youtube.com/@3protv/videos") -> dict[str, VideoCandidate]:
     candidates = list_channel_videos(videos_url)
     selected: dict[str, VideoCandidate] = {}
@@ -63,15 +43,15 @@ def find_clipped_archives(target_date: date, videos_url: str = "https://www.yout
             for candidate in candidates
             if any(keyword in candidate.title for keyword in keywords)
         ]
-        for candidate in keyword_matches[:8]:
-            hydrated = hydrate_video(candidate)
-            if hydrated.upload_date == ymd:
-                selected[part_name] = hydrated
-                break
+        dated_matches = [candidate for candidate in keyword_matches if candidate.upload_date == ymd]
+        if dated_matches:
+            selected[part_name] = dated_matches[0]
+        elif keyword_matches:
+            selected[part_name] = keyword_matches[0]
 
     missing = sorted(set(ARCHIVE_PART_KEYWORDS) - set(selected))
     if missing:
         missing_text = ", ".join(missing)
-        raise RuntimeError(f"Same-day archive video not found yet for {target_date.isoformat()}: {missing_text}")
+        raise RuntimeError(f"Archive video not found yet for {target_date.isoformat()}: {missing_text}")
 
     return selected
