@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import load_settings
@@ -12,10 +12,12 @@ from .transcript import collect_transcript
 from .tts import create_openai_tts
 from .youtube_resolver import find_clipped_archives
 
+KST = timezone(timedelta(hours=9))
+
 
 def parse_date(value: str) -> date:
     if value == "today":
-        return date.today()
+        return datetime.now(KST).date()
     return date.fromisoformat(value)
 
 
