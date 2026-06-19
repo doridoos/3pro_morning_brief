@@ -45,30 +45,16 @@ def fetch_with_transcript_api(video_url: str) -> str:
     except ImportError:
         return ""
 
-    try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        transcript = None
-        for language in PREFERRED_LANGS:
-            try:
-                transcript = transcript_list.find_transcript([language])
-                break
-            except Exception:
-                try:
-                    transcript = transcript_list.find_generated_transcript([language])
-                    break
-                except Exception:
-                    continue
-        if transcript is None:
-            transcript = next(iter(transcript_list))
-        return transcript_items_to_text(transcript.fetch())
-    except Exception:
+    api = YouTubeTranscriptApi()
+    for languages in (("ko",), ("ko-orig",), ("ko", "ko-orig"), ("en",), PREFERRED_LANGS):
         try:
-            return transcript_items_to_text(YouTubeTranscriptApi.get_transcript(video_id, languages=list(PREFERRED_LANGS)))
+            return transcript_items_to_text(api.fetch(video_id, languages=languages))
         except Exception:
-            return ""
+            continue
+    return ""
 
 
-def transcript_items_to_text(items: list) -> str:
+def transcript_items_to_text(items) -> str:
     lines: list[str] = []
     for item in items:
         text = ""
@@ -83,17 +69,20 @@ def transcript_items_to_text(items: list) -> str:
 
 
 def fetch_with_ytdlp(video_url: str) -> str:
-    from yt_dlp import YoutubeDL
+    try:
+        from yt_dlp import YoutubeDL
 
-    with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
-        info = ydl.extract_info(video_url, download=False)
+        with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+            info = ydl.extract_info(video_url, download=False)
 
-    subtitle = choose_subtitle(info)
-    if not subtitle:
+        subtitle = choose_subtitle(info)
+        if not subtitle:
+            return ""
+
+        raw = fetch_text(subtitle["url"])
+        return clean_subtitle(raw, subtitle["ext"])
+    except Exception:
         return ""
-
-    raw = fetch_text(subtitle["url"])
-    return clean_subtitle(raw, subtitle["ext"])
 
 
 def choose_subtitle(info: dict) -> dict | None:
