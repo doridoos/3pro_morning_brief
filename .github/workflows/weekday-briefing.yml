@@ -2,6 +2,11 @@ name: Weekday Sampro Morning Briefing
 
 on:
   workflow_dispatch:
+    inputs:
+      briefing_date:
+        description: "Briefing date in KST, for example 2026-06-18. Use today for the current KST date."
+        required: false
+        default: "today"
   # schedule:
   #   # 22:10 UTC = 07:10 KST, Sunday-Thursday UTC = Monday-Friday KST
   #   - cron: "10 22 * * 0-4"
@@ -24,7 +29,7 @@ jobs:
           OPENAI_TTS_VOICE: ${{ vars.OPENAI_TTS_VOICE || 'alloy' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m src.sampro_brief.cli --date today --collect-archive-transcripts --analyze-openai --create-tts --send-telegram
+        run: python -m src.sampro_brief.cli --date "${{ github.event.inputs.briefing_date || 'today' }}" --collect-archive-transcripts --analyze-openai --create-tts --send-telegram
       - name: Save briefing files
         if: always()
         uses: actions/upload-artifact@v4
